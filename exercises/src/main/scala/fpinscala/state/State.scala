@@ -30,9 +30,17 @@ object RNG {
       (f(a), rng2)
     }
 
-  def nonNegativeInt(rng: RNG): (Int, RNG) = ???
+  def nonNegativeInt(rng: RNG): (Int, RNG) = {
+    val (n, nextS) = rng.nextInt
+    if (n == Integer.MIN_VALUE) nonNegativeInt(nextS) // MIN_VALUE has not a positive counterpart
+    else (n.abs, nextS)
+  }
 
-  def double(rng: RNG): (Double, RNG) = ???
+  def double(rng: RNG): (Double, RNG) = {
+    val (n, nextS) = rng.nextInt
+    if (n == Integer.MAX_VALUE) double(nextS) // this will exclude 1 from the codomain
+    else (n.toDouble, nextS)
+  }
 
   def intDouble(rng: RNG): ((Int,Double), RNG) = ???
 
