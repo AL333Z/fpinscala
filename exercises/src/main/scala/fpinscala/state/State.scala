@@ -21,13 +21,14 @@ object RNG {
 
   val int: Rand[Int] = _.nextInt
 
-  def unit[A](a: A): Rand[A] =
+  def unit[A](a: A): Rand[A] = // pass the rng state without using it
     rng => (a, rng)
 
   def map[A,B](s: Rand[A])(f: A => B): Rand[B] =
+  //  def map[A,B](s: RNG => (A, RNG))(f: A => B): RNG => (B, RNG) =
     rng => {
-      val (a, rng2) = s(rng)
-      (f(a), rng2)
+      val (a, rng2) = s(rng) // (A, RNG)
+      (f(a), rng2) // (B, RNG)
     }
 
   def nonNegativeInt(rng: RNG): (Int, RNG) = {
@@ -37,22 +38,65 @@ object RNG {
   }
 
   def double(rng: RNG): (Double, RNG) = {
-    val (n, nextS) = rng.nextInt
-    if (n == Integer.MAX_VALUE) double(nextS) // this will exclude 1 from the codomain
-    else (n.toDouble, nextS)
+    val rand: Rand[Double] = map(nonNegativeInt) { n => n / Integer.MAX_VALUE.toDouble + 1 }
+    rand(rng)
   }
 
-  def intDouble(rng: RNG): ((Int,Double), RNG) = ???
+  def doubleOld(rng: RNG): (Double, RNG) = {
+    val (n, nextS) = nonNegativeInt(rng)
+    (n / Integer.MAX_VALUE.toDouble + 1, nextS)
+  }
 
-  def doubleInt(rng: RNG): ((Double,Int), RNG) = ???
+  def intDouble(rng: RNG): ((Int, Double), RNG) = {
+    val (nInt, nextS) = nonNegativeInt(rng)
+    val (nDouble, nextS2) = double(nextS)
+    ((nInt, nDouble), nextS2)
+  }
 
-  def double3(rng: RNG): ((Double,Double,Double), RNG) = ???
+  def doubleInt(rng: RNG): ((Double, Int), RNG) = {
+    val (nDouble, nextS) = double(rng)
+    val (nInt, nextS2) = nonNegativeInt(nextS)
+    ((nDouble, nInt), nextS2)
+  }
 
-  def ints(count: Int)(rng: RNG): (List[Int], RNG) = ???
+  def double3(rng: RNG): ((Double, Double, Double), RNG) = {
+    val (nDouble1, nextS) = double(rng)
+    val (nDouble2, nextS2) = double(nextS)
+    val (nDouble3, nextS3) = double(nextS2)
+    ((nDouble1, nDouble2, nDouble3), nextS3)
+  }
 
-  def map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = ???
+  def ints(count: Int)(rng: RNG): (List[Int], RNG) = {
+    (0 until count).foldLeft((List[Int](), rng)) { (currentState, i) =>
+      val (l, currentGen) = currentState
+      val (next, nextGen) = currentGen.nextInt
+      (next +: l, nextGen)
+    }
+  }
 
-  def sequence[A](fs: List[Rand[A]]): Rand[List[A]] = ???
+  def positiveMax(n: Int): Rand[Int] =
+    map(nonNegativeInt) { x => x % (n + 1) }
+
+  def map2[A, B, C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = {
+    //  def map2[A, B, C](ra: RNG => (A, RNG), rb: RNG => (B, RNG))(f: (A, B) => C): RNG => (C, RNG) = {
+    rng => {
+      val (a, rnda) = ra(rng)
+      val (b, rndb) = rb(rnda)
+      val c = f(a, b)
+      (c, rndb)
+    }
+  }
+
+  def sequence[A](fs: List[Rand[A]]): Rand[List[A]] = {
+    //    def sequence[A](fs: List[RNG => (A, RNG)]): RNG => (List[A], RNG) = {
+    rng => {
+      fs.foldLeft((List[A](), rng)) { (currentState, ra) =>
+        val (l, gen) = currentState
+        val (newElem, newGen) = ra(gen)
+        (newElem +: l, newGen)
+      }
+    }
+  }
 
   def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] = ???
 }
