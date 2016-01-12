@@ -59,7 +59,8 @@ object Monad {
   val genMonad = new Monad[Gen] {
     def unit[A](a: => A): Gen[A] = Gen.unit(a)
     override def flatMap[A,B](ma: Gen[A])(f: A => Gen[B]): Gen[B] =
-      ma flatMap f
+//      ma flatMap f
+    ???
   }
 
   val parMonad: Monad[Par] = ???

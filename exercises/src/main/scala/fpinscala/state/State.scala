@@ -86,15 +86,11 @@ object RNG {
       (c, rndb)
     }
   }
-
+  
   def sequence[A](fs: List[Rand[A]]): Rand[List[A]] = {
     //    def sequence[A](fs: List[RNG => (A, RNG)]): RNG => (List[A], RNG) = {
-    rng => {
-      fs.foldLeft((List[A](), rng)) { (currentState, ra) =>
-        val (l, gen) = currentState
-        val (newElem, newGen) = ra(gen)
-        (newElem +: l, newGen)
-      }
+    fs.foldRight(unit(List[A]())) { (ra: Rand[A], acc: Rand[List[A]]) =>
+      map2(ra, acc)(_ :: _)
     }
   }
 
