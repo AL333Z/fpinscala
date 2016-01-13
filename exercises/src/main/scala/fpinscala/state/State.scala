@@ -135,12 +135,11 @@ case class State[S,+A](run: S => (A, S)) {
     sys.error("todo")
 
   def flatMap[B](f: A => State[S, B]): State[S, B] = {
-    State(s => {
+    State { s =>
       val (a, sa) = run(s)
       val stateb: State[S, B] = f(a)
-      stateb.run.apply(sa)
+      stateb.run(sa)
     }
-    )
   }
 
   def unit[A](a: A): State[S, A] = State(s => (a, s))
