@@ -141,7 +141,12 @@ case class State[S,+A](run: S => (A, S)) {
       stateb.run(sa)
     }
 
-  def unit[A](a: A): State[S, A] = State(s => (a, s))
+  def unit[B](b: B): State[S, B] = State(s => (b, s))
+
+  def sequence[B](fs: List[State[S, B]]): State[S, List[B]] =
+    fs.foldRight(unit(List[B]())) { (sa: State[S, B], acc: State[S, List[B]]) =>
+      sa.map2(acc)(_ :: _)
+    }
 
 }
 
