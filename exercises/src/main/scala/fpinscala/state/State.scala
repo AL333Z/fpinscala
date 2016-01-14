@@ -124,6 +124,8 @@ object RNG {
 
 case class State[S,+A](run: S => (A, S)) {
 
+  import State._
+
   def map[B](f: A => B): State[S, B] =
     flatMap { a => unit(f(a)) }
 
@@ -141,12 +143,14 @@ case class State[S,+A](run: S => (A, S)) {
       stateb.run(sa)
     }
 
-  def unit[B](b: B): State[S, B] = State(s => (b, s))
+  def modify(f: S => S): State[S, Unit] = for {
+    s <- get // set the state as output
+    _ <- set(f(s))
+  } yield ()
 
-  def sequence[B](fs: List[State[S, B]]): State[S, List[B]] =
-    fs.foldRight(unit(List[B]())) { (sa: State[S, B], acc: State[S, List[B]]) =>
-      sa.map2(acc)(_ :: _)
-    }
+  def get: State[S, S] = State(s => (s, s))
+
+  def set(s: S): State[S, Unit] = State(_ => ((), s))
 
 }
 
@@ -158,5 +162,24 @@ case class Machine(locked: Boolean, candies: Int, coins: Int)
 
 object State {
   type Rand[A] = State[RNG, A]
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
+
+  def unit[S, A](a: A): State[S, A] = State(s => (a, s))
+
+  def sequence[S, A](fs: List[State[S, A]]): State[S, List[A]] =
+    fs.foldRight(unit[S, List[A]](List[A]())) { (sa: State[S, A], acc: State[S, List[A]]) =>
+      sa.map2(acc)(_ :: _)
+    }
+
+  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = {
+
+    inputs.map(in =>
+      State(m => {
+
+
+        ???
+      })
+    )
+
+    ???
+  }
 }
