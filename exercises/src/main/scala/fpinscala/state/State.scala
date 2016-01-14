@@ -170,16 +170,20 @@ object State {
       sa.map2(acc)(_ :: _)
     }
 
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = {
+  def simulateMachine(inputs: List[Input]): State[Machine, Int] = {
 
-    inputs.map(in =>
-      State(m => {
-
-
-        ???
+    val states = inputs.map(in =>
+      State[Machine, Int](m => {
+        in match {
+          case Coin if m.locked && m.candies > 0 =>
+            val updatedCoins = m.coins + 1
+            (updatedCoins, m.copy(locked = false, coins = updatedCoins))
+          case Turn if !m.locked && m.candies > 0 => (m.coins, m.copy(locked = true, candies = m.candies - 1))
+          case _ => (m.coins, m)
+        }
       })
     )
 
-    ???
+    states.last
   }
 }
