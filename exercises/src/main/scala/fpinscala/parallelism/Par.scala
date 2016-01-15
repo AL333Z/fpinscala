@@ -9,19 +9,9 @@ object Par {
   
   def run[A](s: ExecutorService)(a: Par[A]): Future[A] = a(s)
 
-  // `unit` is represented as a function that returns a `UnitFuture`, which is a simple implementation of `Future` that
-  // just wraps a constant value. It doesn't use the `ExecutorService` at all. It's always done and can't be cancelled.
-  // Its `get` method simply returns the value that we gave it.
-  def unit[A](a: A): Par[A] = (es: ExecutorService) => UnitFuture(a)
-
-  private case class UnitFuture[A](get: A) extends Future[A] {
-    override def isCancelled: Boolean = false
-
-    override def get(timeout: Long, unit: TimeUnit): A = get
-
-    override def cancel(mayInterruptIfRunning: Boolean): Boolean = false
-
-    override def isDone: Boolean = true
+  def map[A, B](pa: Par[A])(f: A => B): Par[B] = es => {
+    val resa = run(es)(pa)
+    UnitFuture(f(resa.get))
   }
 
   // `map2` doesn't evaluate the call to `f` in a separate logical thread, in accord with our design choice of having
@@ -29,6 +19,12 @@ object Par {
   // want the evaluation of `f` to occur in a separate thread.
   def map2[A, B, C](a: Par[A], b: Par[B])(f: (A, B) => C): Par[C] =
     map(product(a, b)) { t => f(t._1, t._2) }
+
+  def sequence[A](l: List[Par[A]]): Par[List[A]] = {
+    l.foldRight(unit(List[A]())) { (a, acc) =>
+      map2(a, acc)(_ :: _)
+    }
+  }
 
   // This is the simplest and most natural implementation of `fork`, but there are some problems with it--for one, the
   // outer `Callable` will block waiting for the "inner" task to complete. Since this blocking occupies a thread in our
@@ -39,11 +35,6 @@ object Par {
     es.submit(new Callable[A] {
       override def call(): A = run(es)(a).get // !?
     })
-  }
-
-  def map[A, B](pa: Par[A])(f: A => B): Par[B] = es => {
-    val resa = run(es)(pa)
-    UnitFuture(f(resa.get))
   }
 
   def product[A, B](fa: Par[A], fb: Par[B]): Par[(A, B)] = es => {
@@ -69,6 +60,33 @@ object Par {
       if (run(es)(cond).get) t(es) // !?
       else f(es)
     }
+
+  def parMap[A, B](l: List[A])(f: A => B): Par[List[B]] = fork {
+    val fbs: List[Par[B]] = l.map(asyncF(f))
+    sequence(fbs)
+  }
+
+  def parFilter[A](l: List[A])(f: A => Boolean): Par[List[A]] = fork {
+    val fbs: List[Par[A]] = l.map(asyncF(identity))
+    fbs.foldRight(unit(List[A]())) { (pa, pacc) =>
+      map2(pa, pacc) { (a, acc) => if (f(a)) a :: acc else acc }
+    }
+  }
+
+  // `unit` is represented as a function that returns a `UnitFuture`, which is a simple implementation of `Future` that
+  // just wraps a constant value. It doesn't use the `ExecutorService` at all. It's always done and can't be cancelled.
+  // Its `get` method simply returns the value that we gave it.
+  def unit[A](a: A): Par[A] = (es: ExecutorService) => UnitFuture(a)
+
+  private case class UnitFuture[A](get: A) extends Future[A] {
+    override def isCancelled: Boolean = false
+
+    override def get(timeout: Long, unit: TimeUnit): A = get
+
+    override def cancel(mayInterruptIfRunning: Boolean): Boolean = false
+
+    override def isDone: Boolean = true
+  }
 
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
