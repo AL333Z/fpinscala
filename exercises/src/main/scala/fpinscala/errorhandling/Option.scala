@@ -9,22 +9,22 @@ sealed trait Option[+A] {
 
   def map[B](f: A => B): Option[B] = this match {
     case Some(a) => Some(f(a))
-    case _ => _
+    case None => None
   }
 
   def getOrElse[B>:A](default: => B): B = this match {
     case Some(a) => a
-    case _ => default
+    case None => default
   }
 
   def flatMap[B](f: A => Option[B]): Option[B] = this match {
     case Some(a) => f(a)
-    case _ => None
+    case None => None
   }
 
   def orElse[B>:A](ob: => Option[B]): Option[B] = this match {
     case None => ob
-    case _ => _
+    case s: Some[A] => s
   }
 
   def filter(f: A => Boolean): Option[A] = this.flatMap(x => if (f(x)) Some(x) else None)
