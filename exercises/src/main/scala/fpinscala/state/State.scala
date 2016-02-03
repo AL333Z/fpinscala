@@ -21,6 +21,10 @@ object RNG {
 
   val int: Rand[Int] = _.nextInt
 
+  def boolean: Rand[Boolean] = rng => rng.nextInt match {
+    case (i, rng2) => (i % 2 == 0, rng2)
+  }
+
   def unit[A](a: A): Rand[A] = // pass the rng state without using it
     rng => (a, rng)
 
@@ -169,6 +173,8 @@ object State {
     fs.foldRight(unit[S, List[A]](List[A]())) { (sa: State[S, A], acc: State[S, List[A]]) =>
       sa.map2(acc)(_ :: _)
     }
+
+  def boolean: State[RNG, Boolean] = State(RNG.boolean)
 
   def simulateMachine(inputs: List[Input]): State[Machine, Int] = {
 

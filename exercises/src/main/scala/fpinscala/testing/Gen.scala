@@ -1,5 +1,7 @@
 package fpinscala.testing
 
+import fpinscala.laziness.Stream
+import fpinscala.laziness.Stream._
 import fpinscala.state.{RNG, State}
 import fpinscala.testing.Prop._
 
@@ -33,16 +35,44 @@ object Prop {
   def forAll[A](gen: Gen[A])(f: A => Boolean): Prop = ???
 }
 
+
 object Gen {
 
-  def choose(start: Int, stopExclusive: Int): Gen[Int] = ???
+  def unit[A](a: => A): Gen[A] =
+    Gen(
+      State.unit(a),
+      Stream(a)
+    )
 
-  def unit[A](a: => A): Gen[A] = ???
+  def booleanOld: Gen[Boolean] =
+    Gen(
+      State(rng => rng.nextInt match {
+        case (i, rng2) => (i % 2 == 0, rng2)
+      }),
+      Stream(true, false)
+    )
+
+  def boolean: Gen[Boolean] =
+    Gen(
+      State.boolean,
+      Stream(true, false)
+    )
+
+  def choose(start: Int, stopExclusive: Int): Gen[Int] =
+    Gen(
+      State(RNG.nonNegativeInt).map(x => start + (x % (stopExclusive - start))),
+      Stream.from(start).take(stopExclusive - start)
+    )
+
+  def listOfN[A](n: Int, g: Gen[A]): Gen[List[A]] =
+    Gen(
+      State.sequence(List.fill(n)(g.sample)),
+      ???
+    )
+
 }
 
-trait Gen[A] {
-
-  type Gen[A] = State[RNG, A]
+case class Gen[+A](sample: State[RNG, A], exhaustive: Stream[A]) {
 
   def map[A, B](f: A => B): Gen[B] = ???
 
