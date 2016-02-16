@@ -1,17 +1,22 @@
 package fpinscala.parsing
 
 import fpinscala.testing.exhaustive.Prop._
-import fpinscala.testing.exhaustive.{Gen, Prop}
+import fpinscala.testing.exhaustive.{SGen, Gen, Prop}
 
 import scala.language.{higherKinds, implicitConversions}
+import scala.util.matching.Regex
 
 // so inner classes may call methods of trait
 trait Parsers[Parser[+ _]] {
   self =>
   def flatMap[A, B](a: Parser[A])(f: A => Parser[B]): Parser[B]
 
+  def andThen[A, B](a: Parser[A], b: Parser[B]): Parser[B] =
+    a.flatMap(_ => b)
+
   // this looks like a return..
   def succeed[A](a: A): Parser[A]
+
   // def succeed[A](a: A): Parser[A] = string("").map(_ => a)
 
   def run[A](p: Parser[A])(input: String): Either[ParseError, A]
@@ -21,6 +26,19 @@ trait Parsers[Parser[+ _]] {
   def or[A](s1: Parser[A], s2: Parser[A]): Parser[A]
 
   implicit def string(s: String): Parser[String]
+
+  // if p fails, its ParseError will somehow incorporate msg
+  def label[A](msg: String)(p: Parser[A]): Parser[A]
+
+  def scope[A](msg: String)(p: Parser[A]): Parser[A]
+
+  def errorStack(e: ParseError): List[(Location, String)]
+
+  def errorLocation(e: ParseError): Location
+
+  def errorMessage(e: ParseError): String
+
+  def attempt[A](p: Parser[A]): Parser[A]
 
   def many[A](p: Parser[A]): Parser[List[A]] =
     p.map2(many(p))(_ :: _) or succeed(List[A]())
@@ -48,6 +66,8 @@ trait Parsers[Parser[+ _]] {
 
   implicit def asStringParser[A](a: A)(implicit f: A => Parser[String]): ParserOps[String] = ParserOps(f(a))
 
+  implicit def regex(r: Regex): Parser[String]
+
   case class ParserOps[A](p: Parser[A]) {
     def |[B >: A](p2: Parser[B]): Parser[B] = self.or(p, p2)
 
@@ -61,7 +81,20 @@ trait Parsers[Parser[+ _]] {
 
     def map2[B, C](p2: Parser[B])(f: (A, B) => C): Parser[C] = self.map2(p)(p2)(f)
 
+    def many: Parser[List[A]] = self.many(p)
+
+    def many1: Parser[List[A]] = self.many1(p)
+
+    def slice: Parser[String] = self.slice(p)
+
     def flatMap[B](f: A => Parser[B]): Parser[B] = self.flatMap(p)(f)
+
+    def andThen[B](b: Parser[B]): Parser[B] = self.andThen(p, b)
+
+    def label(msg: String): Parser[A] = self.label(msg)(p)
+
+    def scope(msg: String): Parser[A] = self.scope(msg)(p)
+
   }
 
   object Laws {
@@ -70,6 +103,14 @@ trait Parsers[Parser[+ _]] {
 
     def mapLaw[A](p: Parser[A])(in: Gen[String]): Prop =
       equal(p, p.map(a => a))(in)
+
+    def labelLaw[A](p: Parser[A], inputs: SGen[String]): Prop =
+      forAll(inputs ** Gen.string) { case (input, msg) =>
+        run(label(msg)(p))(input) match {
+          case Left(e) => errorMessage(e) == msg
+          case _ => true
+        }
+      }
   }
 
 }
@@ -92,4 +133,59 @@ case class Location(input: String, offset: Int = 0) {
 
 case class ParseError(stack: List[(Location, String)] = List(),
                       otherFailures: List[ParseError] = List()) {
+}
+
+trait JSON
+
+object JSON {
+
+  case object JNull extends JSON
+
+  case class JNumber(get: Double) extends JSON
+
+  case class JString(get: String) extends JSON
+
+  case class JBool(get: Boolean) extends JSON
+
+  case class JArray(get: IndexedSeq[JSON]) extends JSON
+
+  case class JObject(get: Map[String, JSON]) extends JSON
+
+}
+
+object Demo {
+
+  def jsonParser[Parser[+ _]](P: Parsers[Parser]): Parser[JSON] = {
+    import P._
+
+    val spaces = char(' ').many.slice
+    val digit = "[0-9]".r
+    val digitFrom1 = "[1-9]".r
+    val letter = "[A-Za-z]".r
+    val alphanum = (digit or letter).many1
+
+    val openBracket = char('{')
+    val closeBracket = char('}')
+    val quote = char('\"')
+    val openSquareBracket = char('[')
+    val closeSquareBracket = char(']')
+    val eq = char('=')
+
+    val number = digitFrom1 andThen digit.many
+    val literal = quote andThen alphanum andThen quote
+    val boolean = string("true") or string("false")
+    val jnull = string("null")
+
+    val array = openSquareBracket andThen closeSquareBracket
+
+    val jobject = for {
+      _ <- openBracket
+      _ <- literal
+      _ <- eq
+      _ <- number or boolean or jnull or array or jobject
+      _ <- closeBracket
+    } yield ()
+
+    ???
+  }
 }
