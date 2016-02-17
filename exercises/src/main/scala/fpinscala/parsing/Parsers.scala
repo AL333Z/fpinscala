@@ -1,5 +1,6 @@
 package fpinscala.parsing
 
+import fpinscala.parsing.JSON._
 import fpinscala.testing.exhaustive.Prop._
 import fpinscala.testing.exhaustive.{SGen, Gen, Prop}
 
@@ -158,33 +159,56 @@ object Demo {
   def jsonParser[Parser[+ _]](P: Parsers[Parser]): Parser[JSON] = {
     import P._
 
-    val spaces = char(' ').many.slice
-    val digit = "[0-9]".r
-    val digitFrom1 = "[1-9]".r
-    val letter = "[A-Za-z]".r
-    val alphanum = (digit or letter).many1
+    val spaces: Parser[String] = char(' ').many.slice
+    val digit: Parser[String] = "[0-9]".r.slice
+    val digitFrom1: Parser[String] = "[1-9]".r.slice
+    val letter: Parser[String] = "[A-Za-z]".r.slice
+    val alphanum: Parser[String] = (digit or letter).many1.slice
 
-    val openBracket = char('{')
-    val closeBracket = char('}')
-    val quote = char('\"')
-    val openSquareBracket = char('[')
-    val closeSquareBracket = char(']')
-    val eq = char('=')
+    val openBracket: Parser[Char] = char('{')
+    val closeBracket: Parser[Char] = char('}')
+    val quote: Parser[Char] = char('\"')
+    val openSquareBracket: Parser[Char] = char('[')
+    val closeSquareBracket: Parser[Char] = char(']')
+    val eq: Parser[Char] = char('=')
 
-    val number = digitFrom1 andThen digit.many
-    val literal = quote andThen alphanum andThen quote
-    val boolean = string("true") or string("false")
-    val jnull = string("null")
+    val number: Parser[JNumber] = for {
+      firstDigit <- digitFrom1
+      otherDigits <- digit.many.slice
 
-    val array = openSquareBracket andThen closeSquareBracket
+      decSeparator <- char('.') or succeed(' ')
+      decimals <- digit.many.slice
 
-    val jobject = for {
-      _ <- openBracket
-      _ <- literal
+      strNumber = firstDigit + otherDigits + "." + decimals
+    } yield JNumber(strNumber.toFloat)
+
+    val literal: Parser[JString] = for {
+      _ <- quote
+      str <- alphanum.slice
+      _ <- quote
+    } yield JString(str)
+
+    val boolean: Parser[JBool] =
+      string("true").map(_ => JBool(true)) or string("false").map(_ => JBool(false))
+
+    val jnull = string("null").map(_ => JNull)
+
+    val array: Parser[JArray] = ???
+//      openSquareBracket andThen closeSquareBracket
+
+    val kv: Parser[Map[String, JSON]] = for {
+      k <- literal.slice
       _ <- eq
-      _ <- number or boolean or jnull or array or jobject
+      v <- number or boolean or literal or jnull or array or jobject
+    } yield Map(k -> v)
+
+    def jobject: Parser[JObject] = for {
+            _ <- openBracket
+            keyValueMap <- kv.flatMap(x => char(',').map(_ => x)).many
+            lastKeyValueMap <- kv or succeed(Map())
       _ <- closeBracket
-    } yield ()
+    } yield JObject(keyValueMap ++ lastKeyValueMap)
+
 
     ???
   }
