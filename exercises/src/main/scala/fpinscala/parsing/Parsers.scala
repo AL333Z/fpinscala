@@ -170,8 +170,6 @@ object Demo {
     val quote: Parser[Char] = char('\"')
     val openSquareBracket: Parser[Char] = char('[')
     val closeSquareBracket: Parser[Char] = char(']')
-    val eq: Parser[Char] = char('=')
-
     val number: Parser[JNumber] = for {
       firstDigit <- digitFrom1
       otherDigits <- digit.many.slice
@@ -193,23 +191,38 @@ object Demo {
 
     val jnull = string("null").map(_ => JNull)
 
-    val array: Parser[JArray] = ???
-//      openSquareBracket andThen closeSquareBracket
+    def array: Parser[JArray] = {
 
-    val kv: Parser[Map[String, JSON]] = for {
-      k <- literal.slice
-      _ <- eq
-      v <- number or boolean or literal or jnull or array or jobject
-    } yield Map(k -> v)
+      def arrayInternal: Parser[JObject] = char(',') andThen jobject
 
-    def jobject: Parser[JObject] = for {
-            _ <- openBracket
-            keyValueMap <- kv.flatMap(x => char(',').map(_ => x)).many
-            lastKeyValueMap <- kv or succeed(Map())
-      _ <- closeBracket
-    } yield JObject(keyValueMap ++ lastKeyValueMap)
+      def arrayInternalLoop: Parser[List[JObject]] = for {
+        first <- jobject
+        others <- arrayInternal.many
+      } yield first :: others
 
+      for {
+        _ <- openSquareBracket
+        objs <- arrayInternalLoop or succeed(List[JObject]())
+        _ <- closeSquareBracket
+      } yield JArray(objs.toIndexedSeq)
+    }
 
-    ???
+    def jobject: Parser[JObject] = {
+
+      val kv: Parser[Map[String, JSON]] = for {
+        k <- literal.slice
+        _ <- char(':')
+        v <- number or boolean or literal or jnull or array or jobject
+      } yield Map(k -> v)
+
+      for {
+        _ <- openBracket
+        keyValueMap <- kv.flatMap(x => char(',').map(_ => x)).many
+        lastKeyValueMap <- kv or succeed(Map[String, JSON]())
+        _ <- closeBracket
+      } yield JObject(keyValueMap.fold(lastKeyValueMap)(_ ++ _))
+    }
+
+    jobject or array
   }
 }
