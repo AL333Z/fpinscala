@@ -1,6 +1,7 @@
 package fpinscala.monoids
 
 import fpinscala.parallelism.Nonblocking._
+import fpinscala.testing.exhaustive.{Prop, Gen}
 
 import scala.language.higherKinds
 
@@ -49,30 +50,36 @@ object Monoid {
   }
 
   def optionMonoid[A]: Monoid[Option[A]] = new Monoid[Option[A]] {
-    override def op(a1: Option[A], a2: Option[A]): Option[A] = (a1, a2) match {
-      case (Some(x), _) => Some(x)
-      case (None, y) => y
-    }
+    override def op(a1: Option[A], a2: Option[A]): Option[A] = a1 orElse a2
 
     override def zero: Option[A] = None
   }
 
-  def endoMonoid[A]: Monoid[A => A] = new Monoid[A => A]{
-    override def op(a1: A => A, a2: A => A): A => A = a1 andThen a2
+  def endoMonoid[A]: Monoid[A => A] = new Monoid[A => A] {
+
+    override def op(a1: A => A, a2: A => A): A => A = a1 compose a2
 
     override def zero: A => A = identity
   }
 
-  // TODO: Placeholder for `Prop`. Remove once you have implemented the `Prop`
-  // data type from Part 2.
-  trait Prop {}
+  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop = {
 
-  // TODO: Placeholder for `Gen`. Remove once you have implemented the `Gen`
-  // data type from Part 2.
+    val identityLaw = Prop.forAll(gen) { a =>
+      m.op(m.zero, a) == m.op(a, m.zero)
+    } tag "monoid identity law"
 
-  import fpinscala.testing._
+    lazy val values: Gen[(A, A, A)] = for {
+      x <- gen
+      y <- gen
+      z <- gen
+    } yield (x, y, z)
 
-  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop = sys.error("todo")
+    lazy val associativeLaw = Prop.forAll(values) { case (x, y, z) =>
+      m.op(x, m.op(y, z)) == m.op(m.op(x, y), z)
+    } tag "monoid associative law"
+
+    identityLaw && associativeLaw
+  }
 
   def trimMonoid(s: String): Monoid[String] = sys.error("todo")
 
@@ -106,7 +113,7 @@ object Monoid {
   def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
     sys.error("todo")
 
-  val wcMonoid: Monoid[WC] = sys.error("todo")
+  //  val wcMonoid: Monoid[WC] = sys.error("todo")
 
   def count(s: String): Int = sys.error("todo")
 
@@ -199,3 +206,17 @@ object OptionFoldable extends Foldable[Option] {
     sys.error("todo")
 }
 
+object Demo extends App {
+
+  Prop.run(Monoid.monoidLaws(Monoid.intAddition, Gen.smallInt).tag("IntAdditionMonoid"))
+  Prop.run(Monoid.monoidLaws(Monoid.intMultiplication, Gen.smallInt).tag("IntMultiplicationMonoid"))
+
+  Prop.run(Monoid.monoidLaws(Monoid.booleanAnd, Gen.boolean).tag("BooleanAndMonoid"))
+  Prop.run(Monoid.monoidLaws(Monoid.booleanOr, Gen.boolean).tag("BooleanOrMonoid"))
+
+  Prop.run(Monoid.monoidLaws(Monoid.optionMonoid[Int], Gen.smallInt.map(x => if (x % 2 == 0) Some(x) else None)).tag("OptionMonoid"))
+
+  // ???
+  Prop.run(Monoid.monoidLaws(Monoid.endoMonoid[Int], Gen.unit[Int => Int](identity)).tag("EndoMonoid"))
+
+}

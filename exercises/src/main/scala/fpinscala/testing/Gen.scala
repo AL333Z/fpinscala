@@ -129,7 +129,7 @@ object Prop {
   def check(p: => Boolean): Prop = // Note that we are non-strict here
     forAll(unit(()))(_ => p)
 
-  val p2 = check {
+  val p2: Prop = check {
     val p = Par.map(Par.unit(1))(_ + 1)
     val p2 = Par.unit(2)
     p(ES).get == p2(ES).get
@@ -145,7 +145,7 @@ object Prop {
     ) (ES) get
   }
 
-  val S = weighted(
+  val S: Gen[ExecutorService] = weighted(
     choose(1,4).map(Executors.newFixedThreadPool) -> .75,
     unit(Executors.newCachedThreadPool) -> .25) // `a -> b` is syntax sugar for `(a,b)`
 
