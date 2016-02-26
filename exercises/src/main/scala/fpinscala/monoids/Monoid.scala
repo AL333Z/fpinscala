@@ -1,7 +1,7 @@
 package fpinscala.monoids
 
 import fpinscala.parallelism.Nonblocking._
-import fpinscala.testing.exhaustive.{Prop, Gen}
+import fpinscala.testing.exhaustive.{Gen, Prop}
 
 import scala.language.higherKinds
 
@@ -79,6 +79,15 @@ object Monoid {
     } tag "monoid associative law"
 
     identityLaw && associativeLaw
+  }
+
+  val wordsMonoid: Monoid[String] = new Monoid[String] {
+
+    private def cleanString(s: String) = s.dropWhile(_.isSpaceChar).takeWhile(_.isSpaceChar)
+
+    override def op(a1: String, a2: String): String = cleanString(a1) + " " + cleanString(a2)
+    override def zero: String = stringMonoid.zero
+
   }
 
   def trimMonoid(s: String): Monoid[String] = sys.error("todo")
@@ -214,9 +223,11 @@ object Demo extends App {
   Prop.run(Monoid.monoidLaws(Monoid.booleanAnd, Gen.boolean).tag("BooleanAndMonoid"))
   Prop.run(Monoid.monoidLaws(Monoid.booleanOr, Gen.boolean).tag("BooleanOrMonoid"))
 
+  Prop.run(Monoid.monoidLaws(Monoid.wordsMonoid, Gen.stringN(10)).tag("WordsMonoid"))
+
   Prop.run(Monoid.monoidLaws(Monoid.optionMonoid[Int], Gen.smallInt.map(x => if (x % 2 == 0) Some(x) else None)).tag("OptionMonoid"))
 
   // ???
-  Prop.run(Monoid.monoidLaws(Monoid.endoMonoid[Int], Gen.unit[Int => Int](identity)).tag("EndoMonoid"))
+  //  Prop.run(Monoid.monoidLaws(Monoid.endoMonoid[Int], Gen.smallInt.map(x => (y:Int) => x)).tag("EndoMonoid"))
 
 }
