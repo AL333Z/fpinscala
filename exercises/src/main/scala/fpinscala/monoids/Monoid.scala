@@ -1,5 +1,6 @@
 package fpinscala.monoids
 
+import fpinscala.monoids.Monoid.WC
 import fpinscala.parallelism.Nonblocking._
 import fpinscala.testing.exhaustive.{Gen, Prop}
 
@@ -81,39 +82,71 @@ object Monoid {
     identityLaw && associativeLaw
   }
 
+  /*
+    A monoid homomorphism f between monoids M and N obeys the
+    following general law for all values x and y:
+    M.op(f(x), f(y)) == f(N.op(x, y))
+
+    e.g:
+      f: (String => Int) // string length fn
+      M: Monoid[Int] // int addition monoid
+      N: Monoid[String]
+   */
+
   val wordsMonoid: Monoid[String] = new Monoid[String] {
 
     private def cleanString(s: String) = s.dropWhile(_.isSpaceChar).takeWhile(_.isSpaceChar)
 
     override def op(a1: String, a2: String): String = cleanString(a1) + " " + cleanString(a2)
+
     override def zero: String = stringMonoid.zero
 
+  }
+
+  def dual[A](m: Monoid[A]): Monoid[A] = new Monoid[A] {
+    def op(x: A, y: A): A = m.op(y, x)
+
+    val zero = m.zero
   }
 
   def trimMonoid(s: String): Monoid[String] = sys.error("todo")
 
   def concatenate[A](as: List[A], m: Monoid[A]): A =
-    sys.error("todo")
+    as.fold(m.zero)(m.op)
 
   def foldMap[A, B](as: List[A], m: Monoid[B])(f: A => B): B =
-    sys.error("todo")
+    concatenate(as.map(f), m)
 
   def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
-    sys.error("todo")
+    foldMap(as, endoMonoid[B])(f.curried)(z)
 
   def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
-    sys.error("todo")
+    foldMap(as, dual(endoMonoid[B])) { a => b => f(b, a) }(z)
 
-  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
-    sys.error("todo")
+  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
+    if (as.isEmpty) m.zero
+    else if (as.length == 1) f(as.head)
+    else {
+      val (l, r) = as.splitAt(as.length / 2)
+      m.op(foldMapV(l, m)(f), foldMapV(r, m)(f))
+    }
+  }
 
   def ordered(ints: IndexedSeq[Int]): Boolean =
     sys.error("todo")
 
   sealed trait WC
 
+  /*
+    A Stub is the simplest case, where we have not seen any complete words yet.
+   */
   case class Stub(chars: String) extends WC
 
+  /*
+  Part keeps the number of complete words we have seen so far, in words.
+  The value lStub holds any partial word we have seen to the left of those words,
+  and rStub holds the ones on the right.
+   */
   case class Part(lStub: String, words: Int, rStub: String) extends WC
 
   def par[A](m: Monoid[A]): Monoid[Par[A]] =
@@ -122,9 +155,34 @@ object Monoid {
   def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
     sys.error("todo")
 
-  //  val wcMonoid: Monoid[WC] = sys.error("todo")
+  val wcMonoid: Monoid[WC] = new Monoid[WC] {
 
-  def count(s: String): Int = sys.error("todo")
+    override def op(a1: WC, a2: WC): WC = (a1, a2) match {
+      case (Stub(x), Stub(y)) => Stub(x + y)
+      case (Part(l1, w1, r1), Part(l2, w2, r2)) => Part(l1, w1 + w2 + (if ((r1 + l2).isEmpty) 0 else 1), r2)
+      case (Part(l1, w1, r1), Stub(y)) => Part(l1, w1, r1 + y)
+      case (Stub(x), Part(l2, w2, r2)) => Part(x + l2, w2, r2)
+    }
+
+    override def zero: WC = Stub("")
+  }
+
+  def count(s: String): Int = {
+
+    def wc(char: Char): WC = {
+      if (!char.isWhitespace) Stub(char.toString)
+      else Part("", 0,"")
+    }
+
+    // given a string in a stub, is it a word?
+    def unstub(x: String): Int = x.length.min(1)
+
+    val resWC = foldMapV(s.toIndexedSeq, wcMonoid)(wc)
+    resWC match {
+      case Stub(x) => unstub(x)
+      case Part(l, w, r) => unstub(l) + w + unstub(r)
+    }
+  }
 
   def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
     sys.error("todo")
@@ -224,6 +282,10 @@ object Demo extends App {
   Prop.run(Monoid.monoidLaws(Monoid.booleanOr, Gen.boolean).tag("BooleanOrMonoid"))
 
   Prop.run(Monoid.monoidLaws(Monoid.wordsMonoid, Gen.stringN(10)).tag("WordsMonoid"))
+
+  val wcMonoid: Monoid[WC] = Monoid.wcMonoid
+  Prop.run(Monoid.monoidLaws(Monoid.wcMonoid, Gen.stringN(10)).tag("WordsMonoid"))
+
 
   Prop.run(Monoid.monoidLaws(Monoid.optionMonoid[Int], Gen.smallInt.map(x => if (x % 2 == 0) Some(x) else None)).tag("OptionMonoid"))
 
