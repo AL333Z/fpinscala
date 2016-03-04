@@ -1,6 +1,5 @@
 package fpinscala.monoids
 
-import fpinscala.monoids.Monoid.WC
 import fpinscala.parallelism.Nonblocking._
 import fpinscala.testing.exhaustive.{Gen, Prop}
 
@@ -87,10 +86,14 @@ object Monoid {
     following general law for all values x and y:
     M.op(f(x), f(y)) == f(N.op(x, y))
 
+    This law holds for some monoids.
+
     e.g:
       f: (String => Int) // string length fn
       M: Monoid[Int] // int addition monoid
       N: Monoid[String]
+
+
    */
 
   val wordsMonoid: Monoid[String] = new Monoid[String] {
@@ -184,17 +187,50 @@ object Monoid {
     }
   }
 
-  def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
-    sys.error("todo")
+  def productMonoid[A, B](a: Monoid[A], b: Monoid[B]): Monoid[(A, B)] = new Monoid[(A, B)] {
 
-  def functionMonoid[A, B](B: Monoid[B]): Monoid[A => B] =
-    sys.error("todo")
+    override def op(a1: (A, B), a2: (A, B)): (A, B) = (a.op(a1._1, a2._1), b.op(a1._2, a2._2))
 
-  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] =
-    sys.error("todo")
+    override def zero: (A, B) = (a.zero, b.zero)
+  }
 
+  def coproductMonoid[A, B](A: Monoid[A],
+                            B: Monoid[B]): Monoid[Either[A, B]] = new Monoid[Either[A, B]] {
+
+    override def op(a1: Either[A, B], a2: Either[A, B]): Either[A, B] = ???
+
+    override def zero: Either[A, B] = ???
+  }
+
+  def functionMonoid[A, B](mb: Monoid[B]): Monoid[A => B] = new Monoid[(A) => B] {
+
+    override def op(a1: (A) => B, a2: (A) => B): (A) => B = a => mb.op(a1(a), a2(a))
+
+    override def zero: (A) => B = a => mb.zero
+  }
+
+  def mapMergeMonoid[K, V](vm: Monoid[V]): Monoid[Map[K, V]] = new Monoid[Map[K, V]] {
+
+    override def op(a: Map[K, V], b: Map[K, V]): Map[K, V] = {
+      (a.keySet ++ b.keySet).foldLeft(zero) { (acc, k) =>
+        acc.updated(k, vm.op(a.getOrElse(k, vm.zero), b.getOrElse(k, vm.zero)))
+      }
+    }
+
+    override def zero: Map[K, V] = Map[K, V]()
+  }
+
+  def frequencyMap(strings: IndexedSeq[String]): Map[String, Int] =
+  // each string is translated in a Map(s, 1), and then each map is merged (adding 1 each time the string occurs)
+  //    IndexedSeqFoldable.foldMap(strings)(s => Map(s -> 1))(mapMergeMonoid[String, Int](intAddition))
+
+  // or using the general case..
+    bag(strings)
+
+  // general case..
   def bag[A](as: IndexedSeq[A]): Map[A, Int] =
-    sys.error("todo")
+    IndexedSeqFoldable.foldMap(as)((x: A) => Map(x -> 1))(mapMergeMonoid[A, Int](intAddition))
+
 }
 
 trait Foldable[F[_]] {
@@ -214,7 +250,7 @@ trait Foldable[F[_]] {
     foldMap(as)(identity)(m)
 
   def toList[A](as: F[A]): List[A] =
-    foldRight(as)(List[A]())(_ :: _
+    foldRight(as)(List[A]())(_ :: _)
 
 }
 
@@ -263,17 +299,17 @@ object TreeFoldable extends Foldable[Tree] {
   }
 
 
-//  override def foldLeft[A, B](as: Tree[A])(z: B)(f: (B, A) => B) = as match {
-//    case Leaf(a) => f(z, a)
-//    case Branch(l, r) => {
-//      // why is the compiler crazy here?
-//      val inner: B = foldLeft(l)(z)(f)
-//      foldLeft(r)(inner)(f)
-//    }
-//  }
-//
-//  override def foldRight[A, B](as: Tree[A])(z: B)(f: (A, B) => B) =
-//    sys.error("todo")
+  //  override def foldLeft[A, B](as: Tree[A])(z: B)(f: (B, A) => B) = as match {
+  //    case Leaf(a) => f(z, a)
+  //    case Branch(l, r) => {
+  //      // why is the compiler crazy here?
+  //      val inner: B = foldLeft(l)(z)(f)
+  //      foldLeft(r)(inner)(f)
+  //    }
+  //  }
+  //
+  //  override def foldRight[A, B](as: Tree[A])(z: B)(f: (A, B) => B) =
+  //    sys.error("todo")
 }
 
 object OptionFoldable extends Foldable[Option] {
@@ -303,11 +339,20 @@ object Demo extends App {
 
   Prop.run(Monoid.monoidLaws(Monoid.wordsMonoid, Gen.stringN(10)).tag("WordsMonoid"))
 
-  val wcMonoid: Monoid[WC] = Monoid.wcMonoid
-  Prop.run(Monoid.monoidLaws(Monoid.wcMonoid, Gen.stringN(10)).tag("WordsMonoid"))
+  //  val wcMonoid: Monoid[WC] = Monoid.wcMonoid
+  //  Prop.run(Monoid.monoidLaws(Monoid.wcMonoid, Gen.stringN(10)).tag("WordsMonoid"))
 
+  Prop.run(Monoid.monoidLaws(
+    Monoid.productMonoid(Monoid.intAddition, Monoid.booleanAnd),
+    Gen.smallInt ** Gen.boolean)
+    .tag("ProductMonoid"))
 
   Prop.run(Monoid.monoidLaws(Monoid.optionMonoid[Int], Gen.smallInt.map(x => if (x % 2 == 0) Some(x) else None)).tag("OptionMonoid"))
+
+  Monoid.frequencyMap(List("A", "B", "B", "C", "B", "A", "B").toIndexedSeq).foreach {
+    case (k, v) => println(k + ": " + v)
+  }
+
 
   // ???
   //  Prop.run(Monoid.monoidLaws(Monoid.endoMonoid[Int], Gen.smallInt.map(x => (y:Int) => x)).tag("EndoMonoid"))
