@@ -107,7 +107,11 @@ object Par {
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
-  class ParOps[A](p: Par[A]) {}
+  class ParOps[A](p: Par[A]) {
+
+    def flatMap[B](choices: A => Par[B]): Par[B] = Par.flatMap(p)(choices)
+
+  }
 
 }
 
