@@ -178,6 +178,7 @@ object State {
 
   def simulateMachine(inputs: List[Input]): State[Machine, Int] = {
 
+    // FIXME this is wrong since the state isn't propagated, and we're just taking the last one!
     val states = inputs.map(in =>
       State[Machine, Int](m => {
         in match {
